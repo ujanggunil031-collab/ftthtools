@@ -18,8 +18,7 @@ import io
 import re
 import zipfile
 import datetime
-import hashlib
-import secrets
+import bcrypt
 import logging
 from xml.dom import minidom
 
@@ -53,31 +52,24 @@ def supabase() -> Client:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2.  PASSWORD HELPERS  (SHA-256 + salt — no extra libs needed)
+# 2.  PASSWORD HELPERS  (bcrypt — compatible with Supabase pgcrypto hashes)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
-    """Return (hash_hex, salt_hex).  If salt is None a new one is generated."""
-    if salt is None:
-        salt = secrets.token_hex(16)
-    digest = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-    return digest, salt
-
-
 def verify_password(password: str, stored_hash: str) -> bool:
-    """stored_hash is 'salt$hash' as stored by register_user()."""
+    """Verify a plain password against a bcrypt hash stored in DB.
+    Handles both $2a$ (PostgreSQL pgcrypto) and $2b$ (Python bcrypt) prefixes.
+    """
     try:
-        salt, expected = stored_hash.split("$", 1)
-        actual, _ = _hash_password(password, salt)
-        return secrets.compare_digest(actual, expected)
+        # Normalize $2a$ → $2b$ so Python's bcrypt library accepts it
+        normalized = stored_hash.replace("$2a$", "$2b$", 1) if stored_hash.startswith("$2a$") else stored_hash
+        return bcrypt.checkpw(password.encode("utf-8"), normalized.encode("utf-8"))
     except Exception:
         return False
 
 
 def hash_for_storage(password: str) -> str:
-    """Returns 'salt$hash' string for DB storage."""
-    digest, salt = _hash_password(password)
-    return f"{salt}${digest}"
+    """Returns a bcrypt hash string for DB storage."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -735,7 +727,7 @@ HERO_CSS = """
     margin-bottom: 1rem;
   }
 
-  /* ── Admin table ──────────────────────────────────────────── */
+  /* ── Admin table ────────────────────────────────────��─────── */
   .admin-table {
     width: 100%;
     border-collapse: collapse;
@@ -1171,7 +1163,7 @@ def _render_register_form():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════��═══════════════════════════════════════════════════════
 # 9.  KML PROCESSING LOGIC  (bugs fixed + optimized)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1338,7 +1330,7 @@ def process_kml_to_boq(file_bytes: bytes, filename: str) -> tuple[bytes | None, 
     for k, cell in pole_map.items():
         sheet_ae[cell] = pole_totals[k]
 
-    # ── HP Cover ──────────────────────────────────────────────────────────���
+    # ── HP Cover ────────────────────────────────────────────────────��─────���
     hp_cover = sum(
         len(f.getElementsByTagName("Placemark"))
         for f in all_folders
@@ -1348,7 +1340,7 @@ def process_kml_to_boq(file_bytes: bytes, filename: str) -> tuple[bytes | None, 
     sheet_bo["O3"] = filename
     sheet_bo["O4"] = str(datetime.date.today())
 
-    # ── Serialise ──────────────────────────────────────────────────────────
+    # ── Serialise ───────────────��──────────────────────────────────────────
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
