@@ -25,7 +25,7 @@ from xml.dom import minidom
 
 # ─── Third-party ──────────────────────────────────────────────────────────────
 import openpyxl
-from geopy.distance import geodesic
+import math
 from supabase import create_client, Client
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
@@ -1206,7 +1206,16 @@ def _calc_length_m(pm) -> float:
     if not tags or not tags[0].firstChild:
         return 0.0
     pts = _parse_coords(tags[0].firstChild.nodeValue)
-    return sum(geodesic(pts[i], pts[i + 1]).meters for i in range(len(pts) - 1))
+    def _haversine(p1, p2) -> float:
+        """Pure-Python Haversine — no external library needed."""
+        lat1, lon1 = math.radians(p1[0]), math.radians(p1[1])
+        lat2, lon2 = math.radians(p2[0]), math.radians(p2[1])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        return 6_371_000 * 2 * math.asin(math.sqrt(a))
+
+    return sum(_haversine(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
 
 
 def _find_folders(node) -> list:
@@ -1329,7 +1338,7 @@ def process_kml_to_boq(file_bytes: bytes, filename: str) -> tuple[bytes | None, 
     for k, cell in pole_map.items():
         sheet_ae[cell] = pole_totals[k]
 
-    # ── HP Cover ───────────────────────────────────────────────────────────
+    # ── HP Cover ──────────────────────────────────────────────────────────���
     hp_cover = sum(
         len(f.getElementsByTagName("Placemark"))
         for f in all_folders
@@ -1530,7 +1539,7 @@ def page_admin():
 
     tab_users, tab_logs, tab_add = st.tabs(["Kelola User", "Activity Log", "Tambah User"])
 
-    # ── Tab 1: User management ─────────────────────────────────────────────
+    # ── Tab 1: User management ──────────────��──────────────────────────────
     with tab_users:
         st.markdown("#### Daftar Pengguna")
         users = get_all_users()
